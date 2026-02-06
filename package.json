@@ -1,0 +1,20 @@
+{
+  "name": "note-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for note.com",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "cf-typegen": "wrangler types"
+  },
+  "dependencies": {
+    "agents": "^0.3.6",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250617.0",
+    "typescript": "^5.7.3",
+    "wrangler": "^4.21.0"
+  }
+}
