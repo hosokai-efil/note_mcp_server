@@ -5,3 +5,10 @@ dist/
 doc/
 .claude/
 CLAUDE.md
+
+# Temporary debug/investigation files
+*.tmp.json
+tmp_*.json
+*tmp_*.json
+*temp_*.json
+*v3_response.json

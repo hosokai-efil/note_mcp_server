@@ -86,6 +86,70 @@ interface ArticleDetailResponse {
   data: ArticleDetail;
 }
 
+// Comment types for v3 note_comments API
+
+interface RichTextNode {
+  type: string;
+  value?: string;
+  children?: RichTextNode[];
+  tag_name?: string;
+}
+
+interface NoteCommentUser {
+  key: string;
+  urlname: string;
+  nickname: string;
+  profile_image_url: string;
+}
+
+interface NoteComment {
+  key: string;
+  comment: RichTextNode;
+  like_count: number;
+  reply_count: number;
+  is_edited: boolean;
+  created_at: string;
+  user: NoteCommentUser;
+}
+
+interface NoteCommentsResponse {
+  data: NoteComment[];
+  total_count: number;
+  current_page: number;
+  next_page: number | null;
+}
+
+export interface FormattedComment {
+  key: string;
+  body: string;
+  likeCount: number;
+  replyCount: number;
+  isEdited: boolean;
+  createdAt: string;
+  author: {
+    username: string;
+    nickname: string;
+  };
+}
+
+export interface FormattedCommentList {
+  noteKey: string;
+  totalCount: number;
+  currentPage: number;
+  hasNextPage: boolean;
+  comments: FormattedComment[];
+}
+
+function extractTextFromRichText(node: RichTextNode): string {
+  if (node.type === "text" && node.value) {
+    return node.value;
+  }
+  if (node.children) {
+    return node.children.map(extractTextFromRichText).join("");
+  }
+  return "";
+}
+
 // Formatted response types for MCP tools
 
 export interface FormattedUserProfile {
@@ -217,6 +281,47 @@ export async function getUserArticles(username: string, page: number = 1): Promi
     totalCount: data.totalCount,
     isLastPage: data.isLastPage,
     articles
+  };
+}
+
+export async function getComments(noteKey: string, page: number = 1): Promise<FormattedCommentList> {
+  const url = `${BASE_URL}/api/v3/notes/${encodeURIComponent(noteKey)}/note_comments?page=${page}`;
+
+  const response = await fetch(url, {
+    headers: {
+      "Accept": "application/json",
+      "User-Agent": "Mozilla/5.0 (compatible; note-mcp-server/1.0)"
+    }
+  });
+
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error(`Article not found: ${noteKey}`);
+    }
+    throw new Error(`Failed to fetch comments: ${response.status} ${response.statusText}`);
+  }
+
+  const json = await response.json() as NoteCommentsResponse;
+
+  const comments: FormattedComment[] = json.data.map((c) => ({
+    key: c.key,
+    body: extractTextFromRichText(c.comment),
+    likeCount: c.like_count,
+    replyCount: c.reply_count,
+    isEdited: c.is_edited,
+    createdAt: c.created_at,
+    author: {
+      username: c.user.urlname,
+      nickname: c.user.nickname
+    }
+  }));
+
+  return {
+    noteKey,
+    totalCount: json.total_count,
+    currentPage: json.current_page,
+    hasNextPage: json.next_page !== null,
+    comments
   };
 }
 

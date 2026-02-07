@@ -5,9 +5,11 @@ import {
   getUserProfile,
   getUserArticles,
   getArticle,
+  getComments,
   type FormattedUserProfile,
   type FormattedArticleList,
-  type FormattedArticleDetail
+  type FormattedArticleDetail,
+  type FormattedCommentList
 } from "./notecom";
 
 type Env = {
@@ -86,6 +88,40 @@ export class NoteMCP extends McpAgent<Env> {
       }
     );
 
+    // Tool: get_comments
+    this.server.tool(
+      "get_comments",
+      "Get comments on an article from note.com. No authentication required for public comments.",
+      {
+        note_key: z.string().describe("The note key of the article (e.g., 'n5829f47dd4da'). Use the 'key' field from get_user_articles results."),
+        page: z.number().optional().default(1).describe("Page number (default: 1)")
+      },
+      async ({ note_key, page }): Promise<{ content: { type: "text"; text: string }[] }> => {
+        try {
+          const result: FormattedCommentList = await getComments(note_key, page);
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(result, null, 2)
+              }
+            ]
+          };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unknown error";
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error: ${message}`
+              }
+            ]
+          };
+        }
+      }
+    );
+
     // Tool: get_article
     this.server.tool(
       "get_article",
@@ -144,6 +180,10 @@ export default {
               {
                 name: "get_user_articles",
                 description: "Get a list of articles from a user"
+              },
+              {
+                name: "get_comments",
+                description: "Get comments on an article"
               },
               {
                 name: "get_article",
