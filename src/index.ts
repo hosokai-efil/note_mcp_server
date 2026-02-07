@@ -10,9 +10,11 @@ import {
   type FormattedArticleDetail
 } from "./notecom";
 
-type Env = Record<string, never>;
+type Env = {
+  MCP_OBJECT: DurableObjectNamespace;
+};
 
-class NoteMCP extends McpAgent<Env> {
+export class NoteMCP extends McpAgent<Env> {
   server = new McpServer({
     name: "note-mcp-server",
     version: "1.0.0"
