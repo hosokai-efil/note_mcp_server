@@ -65,20 +65,21 @@ export interface ArticleDetail {
   name: string;
   body: string;
   status: string;
-  publishAt: string | null;
-  likeCount: number;
-  commentCount: number;
+  publish_at: string | null;
+  like_count: number;
+  comment_count: number;
   user: {
     id: number;
     urlname: string;
     nickname: string;
-    profileImagePath: string;
+    profile_image_path: string;
     profile: string | null;
   };
   eyecatch: string | null;
-  isPremium: boolean;
-  isMembershipConnected: boolean;
-  hashtags: { hashtag: { name: string } }[];
+  price: number;
+  can_read: boolean;
+  note_url: string;
+  hashtag_notes: { hashtag: { name: string } }[];
 }
 
 interface ArticleDetailResponse {
@@ -220,7 +221,7 @@ export async function getUserArticles(username: string, page: number = 1): Promi
 }
 
 export async function getArticle(noteId: string): Promise<FormattedArticleDetail> {
-  const url = `${BASE_URL}/api/v1/notes/${encodeURIComponent(noteId)}`;
+  const url = `${BASE_URL}/api/v3/notes/${encodeURIComponent(noteId)}`;
 
   const response = await fetch(url, {
     headers: {
@@ -244,16 +245,16 @@ export async function getArticle(noteId: string): Promise<FormattedArticleDetail
     key: article.key,
     title: article.name,
     body: article.body,
-    publishedAt: article.publishAt || "",
-    likeCount: article.likeCount,
-    commentCount: article.commentCount,
-    isPremium: article.isPremium,
-    hashtags: article.hashtags.map((h) => h.hashtag.name),
+    publishedAt: article.publish_at || "",
+    likeCount: article.like_count,
+    commentCount: article.comment_count,
+    isPremium: article.price > 0,
+    hashtags: (article.hashtag_notes || []).map((h) => h.hashtag.name),
     author: {
       username: article.user.urlname,
       nickname: article.user.nickname,
       profile: article.user.profile || ""
     },
-    url: `${BASE_URL}/n/${article.key}`
+    url: article.note_url || `${BASE_URL}/n/${article.key}`
   };
 }

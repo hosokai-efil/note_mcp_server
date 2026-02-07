@@ -91,7 +91,7 @@ export class NoteMCP extends McpAgent<Env> {
       "get_article",
       "Get the full content of an article from note.com",
       {
-        note_id: z.string().describe("The note ID or key of the article (e.g., 'n1234567890abcdef' or just the ID)")
+        note_id: z.string().describe("The note key of the article (e.g., 'n5829f47dd4da'). Use the 'key' field from get_user_articles results.")
       },
       async ({ note_id }): Promise<{ content: { type: "text"; text: string }[] }> => {
         try {
