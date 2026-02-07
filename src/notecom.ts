@@ -150,6 +150,29 @@ function extractTextFromRichText(node: RichTextNode): string {
   return "";
 }
 
+// Draft creation types for v1 API
+
+interface CreateDraftResponse {
+  data?: {
+    id: number;
+    key: string;
+    name: string;
+    status: string;
+  };
+  error?: {
+    code: string;
+    message: string;
+  };
+}
+
+export interface FormattedDraftResult {
+  success: boolean;
+  noteKey: string;
+  noteId: number;
+  title: string;
+  editUrl: string;
+}
+
 // Formatted response types for MCP tools
 
 export interface FormattedUserProfile {
@@ -322,6 +345,228 @@ export async function getComments(noteKey: string, page: number = 1): Promise<Fo
     currentPage: json.current_page,
     hasNextPage: json.next_page !== null,
     comments
+  };
+}
+
+function generateUUID(): string {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+function uid(): string {
+  const id = generateUUID();
+  return ` name="${id}" id="${id}"`;
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function convertInline(text: string): string {
+  return escapeHtml(text)
+    // bold: **text** or __text__
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/__(.+?)__/g, "<strong>$1</strong>")
+    // italic: *text* or _text_ (not inside words)
+    .replace(/(?<!\w)\*([^*]+?)\*(?!\w)/g, "<em>$1</em>")
+    .replace(/(?<!\w)_([^_]+?)_(?!\w)/g, "<em>$1</em>")
+    // inline code: `code`
+    .replace(/`([^`]+?)`/g, "<code>$1</code>")
+    // links: [text](url)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+}
+
+function textToHtml(text: string): string {
+  const lines = text.split("\n");
+  const html: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Skip empty lines
+    if (line.trim() === "") {
+      i++;
+      continue;
+    }
+
+    // Code block: ```
+    if (line.trim().startsWith("```")) {
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].trim().startsWith("```")) {
+        codeLines.push(escapeHtml(lines[i]));
+        i++;
+      }
+      if (i < lines.length) i++; // skip closing ```
+      html.push(`<pre${uid()}>${codeLines.join("\n")}</pre>`);
+      continue;
+    }
+
+    // Heading: ## or ###
+    const h2Match = line.match(/^##\s+(.+)$/);
+    if (h2Match) {
+      html.push(`<h2${uid()}>${convertInline(h2Match[1])}</h2>`);
+      i++;
+      continue;
+    }
+    const h3Match = line.match(/^###\s+(.+)$/);
+    if (h3Match) {
+      html.push(`<h3${uid()}>${convertInline(h3Match[1])}</h3>`);
+      i++;
+      continue;
+    }
+
+    // Blockquote: >
+    if (line.trim().startsWith("> ") || line.trim() === ">") {
+      const quoteLines: string[] = [];
+      while (i < lines.length && (lines[i].trim().startsWith("> ") || lines[i].trim() === ">")) {
+        quoteLines.push(lines[i].replace(/^>\s?/, ""));
+        i++;
+      }
+      html.push(`<blockquote${uid()}><p${uid()}>${convertInline(quoteLines.join("<br>"))}</p></blockquote>`);
+      continue;
+    }
+
+    // Unordered list: - or *
+    if (/^[\-\*]\s+/.test(line.trim())) {
+      const items: string[] = [];
+      while (i < lines.length && /^[\-\*]\s+/.test(lines[i].trim())) {
+        items.push(lines[i].trim().replace(/^[\-\*]\s+/, ""));
+        i++;
+      }
+      const listItems = items.map((item) => `<li><p${uid()}>${convertInline(item)}</p></li>`).join("");
+      html.push(`<ul${uid()}>${listItems}</ul>`);
+      continue;
+    }
+
+    // Ordered list: 1. 2. 3.
+    if (/^\d+\.\s+/.test(line.trim())) {
+      const items: string[] = [];
+      while (i < lines.length && /^\d+\.\s+/.test(lines[i].trim())) {
+        items.push(lines[i].trim().replace(/^\d+\.\s+/, ""));
+        i++;
+      }
+      const listItems = items.map((item) => `<li><p${uid()}>${convertInline(item)}</p></li>`).join("");
+      html.push(`<ol${uid()}>${listItems}</ol>`);
+      continue;
+    }
+
+    // Horizontal rule: --- or ***
+    if (/^(---|\*\*\*|___)\s*$/.test(line.trim())) {
+      html.push(`<hr${uid()}>`);
+      i++;
+      continue;
+    }
+
+    // Paragraph: collect consecutive non-empty lines
+    const paraLines: string[] = [];
+    while (i < lines.length && lines[i].trim() !== "" && !lines[i].trim().startsWith("```") && !/^#{2,3}\s/.test(lines[i]) && !/^>\s?/.test(lines[i].trim()) && !/^[\-\*]\s+/.test(lines[i].trim()) && !/^\d+\.\s+/.test(lines[i].trim()) && !/^(---|\*\*\*|___)\s*$/.test(lines[i].trim())) {
+      paraLines.push(lines[i]);
+      i++;
+    }
+    if (paraLines.length > 0) {
+      html.push(`<p${uid()}>${convertInline(paraLines.join("<br>"))}</p>`);
+    }
+  }
+
+  return html.join("");
+}
+
+function parseApiResponse(responseText: string): Record<string, unknown> {
+  let json: Record<string, unknown>;
+  try {
+    json = JSON.parse(responseText) as Record<string, unknown>;
+  } catch {
+    throw new Error(`Invalid JSON response: ${responseText.substring(0, 500)}`);
+  }
+
+  if (json.error) {
+    const err = json.error;
+    if (typeof err === "object" && err !== null && (err as Record<string, unknown>).message === "not_login") {
+      throw new Error("Authentication failed: Invalid or expired session cookie. Please get a fresh '_note_session_v5' cookie from your browser.");
+    }
+    throw new Error(`API error: ${JSON.stringify(json.error)}`);
+  }
+
+  return json;
+}
+
+function buildAuthHeaders(sessionCookie: string): Record<string, string> {
+  return {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "X-Requested-With": "XMLHttpRequest",
+    "Origin": "https://note.com",
+    "Referer": "https://note.com/notes/new",
+    "Cookie": `_note_session_v5=${sessionCookie}`
+  };
+}
+
+export async function createDraft(
+  title: string,
+  body: string,
+  sessionCookie: string
+): Promise<FormattedDraftResult> {
+  const headers = buildAuthHeaders(sessionCookie);
+
+  // Step 1: Create empty note to get ID
+  const createRes = await fetch(`${BASE_URL}/api/v1/text_notes`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ name: title, template_key: null })
+  });
+
+  const createText = await createRes.text();
+  if (!createRes.ok) {
+    throw new Error(`Failed to create note: HTTP ${createRes.status}: ${createText}`);
+  }
+
+  const createJson = parseApiResponse(createText);
+  const noteData = createJson.data as Record<string, unknown> | undefined;
+  if (!noteData || !noteData.id) {
+    throw new Error(`Failed to create note: no ID returned: ${createText.substring(0, 500)}`);
+  }
+
+  const noteId = noteData.id as number;
+  const noteKey = noteData.key as string;
+
+  // Step 2: Save body via draft_save
+  const htmlBody = textToHtml(body);
+  const bodyLength = htmlBody.replace(/<[^>]*>/g, "").length;
+
+  const saveRes = await fetch(`${BASE_URL}/api/v1/text_notes/draft_save?id=${noteId}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      name: title,
+      body: htmlBody,
+      body_length: bodyLength,
+      index: false,
+      is_lead_form: false
+    })
+  });
+
+  const saveText = await saveRes.text();
+  if (!saveRes.ok) {
+    throw new Error(`Failed to save draft body: HTTP ${saveRes.status}: ${saveText}`);
+  }
+
+  parseApiResponse(saveText);
+
+  return {
+    success: true,
+    noteKey,
+    noteId,
+    title,
+    editUrl: `${BASE_URL}/notes/${noteKey}/edit`
   };
 }
 

@@ -6,10 +6,12 @@ import {
   getUserArticles,
   getArticle,
   getComments,
+  createDraft,
   type FormattedUserProfile,
   type FormattedArticleList,
   type FormattedArticleDetail,
-  type FormattedCommentList
+  type FormattedCommentList,
+  type FormattedDraftResult
 } from "./notecom";
 
 type Env = {
@@ -122,6 +124,40 @@ export class NoteMCP extends McpAgent<Env> {
       }
     );
 
+    // Tool: create_draft
+    this.server.tool(
+      "create_draft",
+      "Create a draft article on note.com. Requires authentication via session cookie. Get the '_note_session_v5' cookie value from your browser DevTools (Application > Cookies > note.com). The article will be saved as a draft and NOT published.",
+      {
+        title: z.string().describe("The title of the article"),
+        body: z.string().describe("The body text of the article. Plain text with paragraphs separated by blank lines. Line breaks within paragraphs are preserved."),
+        session_cookie: z.string().describe("The value of the '_note_session_v5' cookie from your note.com browser session.")
+      },
+      async ({ title, body, session_cookie }): Promise<{ content: { type: "text"; text: string }[] }> => {
+        try {
+          const result: FormattedDraftResult = await createDraft(title, body, session_cookie);
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(result, null, 2)
+              }
+            ]
+          };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unknown error";
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error: ${message}`
+              }
+            ]
+          };
+        }
+      }
+    );
+
     // Tool: get_article
     this.server.tool(
       "get_article",
@@ -184,6 +220,10 @@ export default {
               {
                 name: "get_comments",
                 description: "Get comments on an article"
+              },
+              {
+                name: "create_draft",
+                description: "Create a draft article (requires authentication)"
               },
               {
                 name: "get_article",
