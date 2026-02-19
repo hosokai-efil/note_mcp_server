@@ -383,6 +383,9 @@ function convertInline(text: string): string {
 }
 
 function textToHtml(text: string): string {
+  // Pre-process: convert literal <br> tags from user/LLM input to newlines
+  text = text.replace(/<br\s*\/?>/gi, "\n");
+
   const lines = text.split("\n");
   const html: string[] = [];
   let i = 0;
@@ -409,16 +412,12 @@ function textToHtml(text: string): string {
       continue;
     }
 
-    // Heading: ## or ###
-    const h2Match = line.match(/^##\s+(.+)$/);
-    if (h2Match) {
-      html.push(`<h2${uid()}>${convertInline(h2Match[1])}</h2>`);
-      i++;
-      continue;
-    }
-    const h3Match = line.match(/^###\s+(.+)$/);
-    if (h3Match) {
-      html.push(`<h3${uid()}>${convertInline(h3Match[1])}</h3>`);
+    // Heading: # through ###### (note.com supports h2 and h3 only)
+    const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      const tag = level <= 2 ? "h2" : "h3";
+      html.push(`<${tag}${uid()}>${convertInline(headingMatch[2])}</${tag}>`);
       i++;
       continue;
     }
@@ -430,7 +429,7 @@ function textToHtml(text: string): string {
         quoteLines.push(lines[i].replace(/^>\s?/, ""));
         i++;
       }
-      html.push(`<blockquote${uid()}><p${uid()}>${convertInline(quoteLines.join("<br>"))}</p></blockquote>`);
+      html.push(`<blockquote${uid()}><p${uid()}>${quoteLines.map(convertInline).join("<br>")}</p></blockquote>`);
       continue;
     }
 
@@ -467,12 +466,12 @@ function textToHtml(text: string): string {
 
     // Paragraph: collect consecutive non-empty lines
     const paraLines: string[] = [];
-    while (i < lines.length && lines[i].trim() !== "" && !lines[i].trim().startsWith("```") && !/^#{2,3}\s/.test(lines[i]) && !/^>\s?/.test(lines[i].trim()) && !/^[\-\*]\s+/.test(lines[i].trim()) && !/^\d+\.\s+/.test(lines[i].trim()) && !/^(---|\*\*\*|___)\s*$/.test(lines[i].trim())) {
+    while (i < lines.length && lines[i].trim() !== "" && !lines[i].trim().startsWith("```") && !/^#{1,6}\s/.test(lines[i]) && !/^>\s?/.test(lines[i].trim()) && !/^[\-\*]\s+/.test(lines[i].trim()) && !/^\d+\.\s+/.test(lines[i].trim()) && !/^(---|\*\*\*|___)\s*$/.test(lines[i].trim())) {
       paraLines.push(lines[i]);
       i++;
     }
     if (paraLines.length > 0) {
-      html.push(`<p${uid()}>${convertInline(paraLines.join("<br>"))}</p>`);
+      html.push(`<p${uid()}>${paraLines.map(convertInline).join("<br>")}</p>`);
     }
   }
 
